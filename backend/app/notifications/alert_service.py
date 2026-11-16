@@ -206,11 +206,25 @@ class AlertService:
                     json={
                         "personalizations": [{"to": [{"email": to_email}]}],
                         "from": {"email": from_email, "name": "Nexus OS Resource Guardian"},
+                        "reply_to": {"email": from_email, "name": "Nexus OS Resource Guardian"},
                         "subject": subject,
                         "content": [
                             {"type": "text/plain", "value": body_text},
                             {"type": "text/html", "value": body_html},
                         ],
+                        "headers": {
+                            "X-Priority": "1",
+                            "X-Mailer": "NexusOS-Guardian/2.0",
+                            "List-Unsubscribe": f"<mailto:{from_email}?subject=unsubscribe>",
+                            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                        },
+                        "tracking_settings": {
+                            "click_tracking": {"enable": False},
+                            "open_tracking": {"enable": False},
+                        },
+                        "mail_settings": {
+                            "bypass_spam_management": {"enable": True},
+                        },
                     },
                 )
             if resp.status_code in (200, 202):
