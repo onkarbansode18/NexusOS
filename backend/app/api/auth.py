@@ -10,20 +10,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import hmac
 from pydantic import BaseModel
 
 from app.config import settings
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-_pwd_ctx: CryptContext | None = None
-
-def get_pwd_context() -> CryptContext:
-    global _pwd_ctx
-    if _pwd_ctx is None:
-        _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return _pwd_ctx
+def verify_password(plain_password: str, correct_password: str) -> bool:
+    return hmac.compare_digest(plain_password.encode("utf-8"), correct_password.encode("utf-8"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
@@ -71,10 +66,9 @@ async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> str:
 
 @router.post("/token", response_model=Token)
 async def login(form: OAuth2PasswordRequestForm = Depends()) -> Token:
-    ctx = get_pwd_context()
     if (
         form.username != settings.admin_username
-        or not ctx.verify(form.password, ctx.hash(settings.admin_password))
+        or not verify_password(form.password, settings.admin_password)
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
