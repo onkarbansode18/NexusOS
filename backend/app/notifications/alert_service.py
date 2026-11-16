@@ -178,6 +178,48 @@ class AlertService:
             logger.warning("SMTP delivery failed: %s", e)
             return False, f"SMTP error ({user}): {e}"
 
+    # ── SendGrid HTTPS API Sender (works on Render free tier) ────────────────
+
+    async def _send_email_sendgrid(
+        self,
+        to_email: str,
+        subject: str,
+        body_text: str,
+        body_html: str,
+    ) -> tuple[bool, str]:
+        """Send via SendGrid HTTPS API — bypasses Render free-tier SMTP block."""
+        api_key = os.getenv("SENDGRID_API_KEY", "").strip()
+        if not api_key:
+            return False, "SENDGRID_API_KEY not configured"
+        from_email = (self._settings.smtp_user or os.getenv("SMTP_USER", "")).strip()
+        if not from_email:
+            from_email = "noreply@nexusos.app"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "personalizations": [{"to": [{"email": to_email}]}],
+                        "from": {"email": from_email, "name": "Nexus OS Resource Guardian"},
+                        "subject": subject,
+                        "content": [
+                            {"type": "text/plain", "value": body_text},
+                            {"type": "text/html", "value": body_html},
+                        ],
+                    },
+                )
+            if resp.status_code in (200, 202):
+                return True, f"Email delivered via SendGrid to {to_email}"
+            else:
+                return False, f"SendGrid error {resp.status_code}: {resp.text[:200]}"
+        except Exception as e:
+            return False, f"SendGrid exception: {e}"
+
     # ── High-Level Dispatch ───────────────────────────────────────────────────
 
     async def send_critical_alert(
@@ -393,13 +435,32 @@ class AlertService:
             smtp_pass = (self._settings.smtp_password or os.getenv("SMTP_PASSWORD", "")).strip()
 
             if smtp_user and smtp_pass:
-                ok, msg = await self._send_email_smtp(email, email_subject, body_text, body_html)
-                details_list.append(msg)
-                if ok:
-                    email_delivered = True
-                    provider_str = f"Gmail ({smtp_user})"
+                sg_key = os.getenv("SENDGRID_API_KEY", "").strip()
+                if sg_key:
+                    # SendGrid HTTPS API — works on Render free tier (SMTP port 587 is blocked)
+                    ok, msg = await self._send_email_sendgrid(email, email_subject, body_text, body_html)
+                    details_list.append(msg)
+                    if ok:
+                        email_delivered = True
+                        provider_str = f"SendGrid ({smtp_user})"
+                    else:
+                        # SendGrid failed — try SMTP as last resort
+                        ok2, msg2 = await self._send_email_smtp(email, email_subject, body_text, body_html)
+                        details_list.append(msg2)
+                        if ok2:
+                            email_delivered = True
+                            provider_str = f"Gmail SMTP ({smtp_user})"
+                        else:
+                            provider_str = f"Email failed: {msg} | {msg2}"
                 else:
-                    provider_str = f"Email failed: {msg}"
+                    # No SendGrid key — try SMTP directly (works locally, fails on Render free tier)
+                    ok, msg = await self._send_email_smtp(email, email_subject, body_text, body_html)
+                    details_list.append(msg)
+                    if ok:
+                        email_delivered = True
+                        provider_str = f"Gmail ({smtp_user})"
+                    else:
+                        provider_str = f"Email failed: {msg}"
             else:
                 details_list.append("Gmail credentials not configured in Settings")
                 provider_str = "Gmail credentials not configured"

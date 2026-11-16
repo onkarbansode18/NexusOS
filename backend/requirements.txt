@@ -24,6 +24,9 @@ torch>=2.0.0
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.12
 
+# HTTP Client (used by LLM summarizer and SendGrid email)
+httpx>=0.24.0
+
 # Logging / Utilities
 python-dotenv==1.0.1
 structlog==24.4.0
