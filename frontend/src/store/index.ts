@@ -29,7 +29,9 @@ const INITIAL_HEALING_ACTIONS: HealingAction[] = [
     simulated: false,
     status_text: 'Executed',
     before_cpu: 45.2,
+    after_cpu: 14.8,
     before_memory_mb: 420,
+    after_memory_mb: 395,
     executed_at: '10:33:52',
     reason: 'Sustained CPU saturation contending with interactive work.',
   },
@@ -43,7 +45,9 @@ const INITIAL_HEALING_ACTIONS: HealingAction[] = [
     simulated: false,
     status_text: 'No action',
     before_cpu: 6.3,
+    after_cpu: 6.1,
     before_memory_mb: 820,
+    after_memory_mb: 820,
     executed_at: '09:55:10',
     reason: 'Transient checkpoint I/O recognized as benign periodic pattern.',
   },
@@ -57,7 +61,9 @@ const INITIAL_HEALING_ACTIONS: HealingAction[] = [
     simulated: true,
     status_text: 'Simulated',
     before_cpu: 9.1,
+    after_cpu: 1.8,
     before_memory_mb: 3190,
+    after_memory_mb: 410,
     executed_at: '09:14:03',
     reason: 'Memory usage exceeded configured critical threshold.',
   },
@@ -71,7 +77,9 @@ const INITIAL_HEALING_ACTIONS: HealingAction[] = [
     simulated: true,
     status_text: 'Simulated',
     before_cpu: 12.7,
+    after_cpu: 3.5,
     before_memory_mb: 440,
+    after_memory_mb: 418,
     executed_at: '08:47:20',
     reason: 'Runaway request loop detected during a deploy.',
   },
@@ -92,7 +100,7 @@ const INITIAL_INCIDENTS: Incident[] = [
     recommended_action: 'restart',
     recommendation_text: 'Restart process python3 ingest worker',
     anomaly_score: -0.92,
-    detected_at: '2026-09-13 10:58:04',
+    detected_at: new Date(Date.now() - 14 * 60000).toISOString(),
     what_happened: 'python3 (PID 3190) RSS memory grew from 1.2 GB to 3.19 GB over 24 minutes while parsing JSON batches.',
     why_detected: 'Memory growth rate (+82 MB/min) exceeded linear safety window (threshold 30 MB/min). ML score -0.92 indicates anomalous leak pattern.',
     ml_explanation: 'The IsolationForest detector flagged continuous monotonic memory allocation with zero garbage collection dips over 120 consecutive observation windows.',
@@ -121,7 +129,7 @@ const INITIAL_INCIDENTS: Incident[] = [
     recommended_action: 'observe',
     recommendation_text: 'Observe',
     anomaly_score: -0.58,
-    detected_at: '2026-09-13 10:41:30',
+    detected_at: new Date(Date.now() - 32 * 60000).toISOString(),
     what_happened: 'chrome (PID 4821) grew from 3.4 GB to 4.85 GB over 18 minutes across several renderer tabs.',
     why_detected: 'Growth is within tolerance for an interactive browser but exceeds the soft warning band, so Nexus is watching rather than acting.',
     ml_explanation: 'The detector scored the trend as borderline (confidence 0.58). Browser workloads have high variance, so the system was downgraded to observation.',
@@ -145,12 +153,12 @@ const INITIAL_INCIDENTS: Incident[] = [
     category: 'CPU saturation',
     severity: 'warning',
     status: 'resolved',
-    resolved_at: '2026-09-13 10:24:11',
+    resolved_at: new Date(Date.now() - 48 * 60000).toISOString(),
     description: 'A transcode job held a full core above the warning threshold for several minutes.',
     recommended_action: 'renice',
     recommendation_text: 'Renice transcode process to +10',
     anomaly_score: -0.65,
-    detected_at: '2026-09-13 10:18:22',
+    detected_at: new Date(Date.now() - 58 * 60000).toISOString(),
     what_happened: 'ffmpeg (PID 2054) consumed 41.2% CPU during high resolution video encoding.',
     why_detected: 'Sustained CPU utilization above 40% for 6 minutes.',
     ml_explanation: 'CPU saturation sustained over 300 seconds; reniced priority to preserve interactive system response.',
@@ -174,12 +182,12 @@ const INITIAL_INCIDENTS: Incident[] = [
     category: 'Disk pressure',
     severity: 'info',
     status: 'resolved',
-    resolved_at: '2026-09-13 09:52:40',
+    resolved_at: new Date(Date.now() - 95 * 60000).toISOString(),
     description: 'A database process had a transient I/O spike during a checkpoint.',
     recommended_action: 'no_action',
     recommendation_text: 'No action — periodic pattern',
     anomaly_score: 0.12,
-    detected_at: '2026-09-13 09:50:10',
+    detected_at: new Date(Date.now() - 110 * 60000).toISOString(),
     what_happened: 'postgres (PID 1288) experienced elevated disk write throughput during scheduled WAL checkpointing.',
     why_detected: 'Pattern matched known benign periodic checkpoint behavior.',
     ml_explanation: 'Heuristic engine recognized periodic WAL flush signature and suppressed false alert.',
@@ -363,6 +371,7 @@ interface NexusState {
   processes: ProcessSnapshot[]
   setMetrics: (m: SystemMetrics) => void
   setProcesses: (p: ProcessSnapshot[]) => void
+  loadMetricsHistory: (minutes?: number) => Promise<void>
 
   // Incidents
   incidents: Incident[]
@@ -370,8 +379,11 @@ interface NexusState {
   recentActions: HealingAction[]
   setIncidents: (inc: Incident[]) => void
   addIncident: (inc: Incident) => void
+  addAction: (action: HealingAction) => void
   resolveIncident: (incidentId: string) => void
   dismissIncident: (incidentId: string) => void
+  loadIncidents: () => Promise<void>
+  loadProcesses: () => Promise<void>
 
   // Selected Process Drawer State
   selectedProcess: ProcessSnapshot | null
@@ -419,19 +431,8 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   },
 
   // ── Live metrics ──────────────────────────────────────────────────────────
-  metrics: {
-    timestamp: new Date().toISOString(),
-    cpu_percent: 28.4,
-    cpu_freq_mhz: 3400,
-    ram_used_mb: 8450,
-    ram_total_mb: 32768,
-    ram_percent: 25.8,
-    disk_used_gb: 240,
-    disk_total_gb: 512,
-    disk_percent: 46.8,
-    net_bytes_sent: 1420000,
-    net_bytes_recv: 5200000,
-  },
+  // null until WebSocket connects and sends real psutil data
+  metrics: null,
   metricsHistory: [],
   processes: INITIAL_PROCESSES,
   setMetrics: (m) =>
@@ -440,6 +441,62 @@ export const useNexusStore = create<NexusState>((set, get) => ({
       metricsHistory: [...s.metricsHistory, m].slice(-MAX_HISTORY),
     })),
   setProcesses: (p) => set({ processes: p.length > 0 ? p : INITIAL_PROCESSES }),
+  loadMetricsHistory: async (minutes = 30) => {
+    try {
+      const data = await api.fetchMetricsHistory(minutes) as any[]
+      if (Array.isArray(data) && data.length > 0) {
+        set((s) => {
+          const mapped: SystemMetrics[] = data.map((d) => ({
+            cpu_percent: d.cpu_percent ?? 0,
+            cpu_freq_mhz: 0,
+            ram_percent: d.ram_percent ?? 0,
+            ram_used_mb: d.ram_used_mb ?? 0,
+            ram_total_mb: d.ram_total_mb ?? 8192,
+            disk_percent: d.disk_percent ?? 0,
+            disk_used_gb: 0,
+            disk_total_gb: 0,
+            net_bytes_sent: d.net_bytes_sent ?? 0,
+            net_bytes_recv: d.net_bytes_recv ?? 0,
+            timestamp: d.timestamp,
+          }))
+          const mapByTs = new Map<string, SystemMetrics>()
+          for (const m of mapped) mapByTs.set(m.timestamp, m)
+          for (const m of s.metricsHistory) mapByTs.set(m.timestamp, m)
+          const merged = Array.from(mapByTs.values()).sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          )
+          return {
+            metricsHistory: merged.slice(-MAX_HISTORY),
+          }
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to load metrics history from API:', e)
+    }
+  },
+  loadProcesses: async () => {
+    try {
+      const data = await api.fetchProcesses() as any[]
+      if (Array.isArray(data) && data.length > 0) {
+        set({
+          processes: data.map((p) => ({
+            pid: p.pid,
+            name: p.name,
+            cpu_percent: p.cpu_percent ?? 0,
+            memory_mb: p.memory_mb ?? 0,
+            memory_percent: p.memory_percent ?? 0,
+            status: p.status ?? 'running',
+            username: p.username ?? '',
+            created_at: p.created_at ?? '',
+            health_status: p.health_status ?? 'healthy',
+            anomaly_score: p.anomaly_score,
+          })),
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to load processes from API:', e)
+    }
+  },
 
   // ── Incidents & Actions ───────────────────────────────────────────────────
   incidents: INITIAL_INCIDENTS,
@@ -458,11 +515,19 @@ export const useNexusStore = create<NexusState>((set, get) => ({
         openIncidentCount: updated.filter((i) => i.status === 'open' || i.status === 'investigating' || i.status === 'monitoring').length,
       }
     }),
+  addAction: (action) =>
+    set((s) => ({
+      recentActions: [action, ...s.recentActions.filter((a) => a.id !== action.id)],
+    })),
   resolveIncident: (incidentId) =>
     set((s) => {
-      const updated = s.incidents.map((i) =>
-        i.id === incidentId ? { ...i, status: 'resolved' as const, resolved_at: new Date().toISOString() } : i
-      )
+      const norm = incidentId.toLowerCase()
+      const updated = s.incidents.map((i) => {
+        const matches = i.id.toLowerCase() === norm || (i.inc_number && i.inc_number.toLowerCase() === norm)
+        return matches ? { ...i, status: 'resolved' as const, resolved_at: new Date().toISOString() } : i
+      })
+      // Call backend API with the normalized id
+      api.resolveIncident(incidentId.toLowerCase()).catch(console.warn)
       return {
         incidents: updated,
         openIncidentCount: updated.filter((i) => i.status === 'open' || i.status === 'investigating' || i.status === 'monitoring').length,
@@ -470,14 +535,71 @@ export const useNexusStore = create<NexusState>((set, get) => ({
     }),
   dismissIncident: (incidentId) =>
     set((s) => {
-      const updated = s.incidents.map((i) =>
-        i.id === incidentId ? { ...i, status: 'dismissed' as const } : i
-      )
+      const norm = incidentId.toLowerCase()
+      const updated = s.incidents.map((i) => {
+        const matches = i.id.toLowerCase() === norm || (i.inc_number && i.inc_number.toLowerCase() === norm)
+        return matches ? { ...i, status: 'dismissed' as const } : i
+      })
       return {
         incidents: updated,
         openIncidentCount: updated.filter((i) => i.status === 'open' || i.status === 'investigating' || i.status === 'monitoring').length,
       }
     }),
+  loadIncidents: async () => {
+    try {
+      const raw = await api.fetchIncidents(undefined, 500) as any[]
+      if (Array.isArray(raw)) {
+        const incidents: Incident[] = raw.map((inc: any) => ({
+          id: inc.id,
+          inc_number: inc.inc_number,
+          pid: inc.pid,
+          process_name: inc.process_name,
+          title: inc.title || inc.description?.slice(0, 60) || `Anomaly on ${inc.process_name}`,
+          category: inc.category,
+          severity: inc.severity,
+          status: inc.status,
+          description: inc.description,
+          prediction: inc.prediction,
+          recommended_action: inc.recommended_action,
+          recommendation_text: inc.recommendation_text,
+          anomaly_score: inc.anomaly_score ?? 0,
+          nl_summary: inc.nl_summary,
+          nl_slack_message: inc.nl_slack_message,
+          detected_at: inc.detected_at ? inc.detected_at.replace(' ', 'T') : inc.detected_at,
+          resolved_at: inc.resolved_at ? inc.resolved_at.replace(' ', 'T') : inc.resolved_at,
+          actions: (inc.actions || []).map((a: any) => ({
+            id: a.id,
+            incident_id: a.incident_id,
+            action_type: a.action_type,
+            action_title: `${a.action_type.charAt(0).toUpperCase()}${a.action_type.slice(1)}`,
+            pid: a.pid,
+            process_name: a.process_name,
+            simulated: a.simulated,
+            status_text: a.simulated ? 'Simulated' : 'Executed',
+            before_cpu: a.before_cpu ?? 0,
+            before_memory_mb: a.before_memory_mb ?? 0,
+            after_cpu: a.after_cpu,
+            after_memory_mb: a.after_memory_mb,
+            executed_at: a.executed_at,
+            reason: a.reason,
+          })),
+        }))
+        // Also update recentActions from the most recent incident actions
+        const allActions = incidents.flatMap(i => i.actions || [])
+        const sortedActions = allActions
+          .filter(a => a.executed_at)
+          .sort((a, b) => (b.executed_at || '').localeCompare(a.executed_at || ''))
+          .slice(0, 50)
+        set({
+          incidents,
+          openIncidentCount: incidents.filter((i) => i.status === 'open' || i.status === 'investigating' || i.status === 'monitoring').length,
+          ...(sortedActions.length > 0 ? { recentActions: sortedActions } : {}),
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to load incidents from backend:', e)
+    }
+  },
 
   // ── Process Drawer ────────────────────────────────────────────────────────
   selectedProcess: null,
@@ -492,14 +614,17 @@ export const useNexusStore = create<NexusState>((set, get) => ({
   executeAction: async (actionType, pid, processName, incidentId) => {
     set({ executingAction: true })
     try {
+      const isSimMode = get().policy.simulation_mode
       const result = await api.executeAction(
         actionType,
         pid,
         processName,
         `Action approved via Nexus Dashboard for incident ${incidentId ?? 'manual'}.`,
+        incidentId,
+        isSimMode,
       ) as any
 
-      const isSimulated = result?.simulated ?? get().policy.simulation_mode
+      const isSimulated = result?.simulated ?? isSimMode
       const isSuccess = result?.success ?? true
       const newPid: number | null = result?.new_pid ?? null
 
@@ -560,8 +685,19 @@ export const useNexusStore = create<NexusState>((set, get) => ({
             message,
             simulated: isSimulated,
           },
+          ...(actionType === 'kill' && isSuccess && !isSimulated
+            ? {
+                processes: s.processes.filter((p) => p.pid !== pid),
+                selectedProcess: s.selectedProcess?.pid === pid ? null : s.selectedProcess,
+              }
+            : {}),
         }
       })
+
+      // Sync latest process list after action
+      setTimeout(() => {
+        get().loadProcesses()
+      }, 500)
     } catch (err: any) {
       const isSimulated = get().policy.simulation_mode
       const errMsg = err?.message ?? String(err)

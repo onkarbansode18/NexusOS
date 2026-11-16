@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, Zap, ShieldOff, Shield, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { useNexusStore } from '../store'
 
 export function ActionConfirmationModal() {
@@ -15,7 +15,7 @@ export function ActionConfirmationModal() {
 
   const isLiveMode = !policy.simulation_mode
 
-  // Auto-dismiss the result banner after 5 seconds
+  // Auto-dismiss the result toast after 5 seconds
   useEffect(() => {
     if (lastActionResult) {
       const timer = setTimeout(() => clearLastActionResult(), 5000)
@@ -23,33 +23,32 @@ export function ActionConfirmationModal() {
     }
   }, [lastActionResult, clearLastActionResult])
 
-  // Show success/error banner even after modal closes
-  if (!confirmingAction && !lastActionResult) return null
-
-  // Result feedback panel (shown after modal closes)
+  // Result Toast (bottom-right, white, 1px border, 3px left border in status color)
   if (!confirmingAction && lastActionResult) {
+    const isSuccess = lastActionResult.success
+    const borderColor = isSuccess ? 'var(--ok)' : 'var(--critical)'
+
     return (
-      <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full animate-slideInUp">
+      <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full">
         <div
-          className={`flex items-start gap-3 p-4 rounded-2xl shadow-2xl border ${
-            !lastActionResult.success
-              ? 'bg-[#fef2f2] border-[#fecaca] text-[#991b1b]'
-              : lastActionResult.simulated
-              ? 'bg-[#fffbeb] border-[#fde68a] text-[#92400e]'
-              : 'bg-[#ecfdf5] border-[#a7f3d0] text-[#065f46]'
-          }`}
+          className="bg-surface border border-border rounded p-3 flex items-start gap-3"
+          style={{
+            borderLeftWidth: 3,
+            borderLeftColor: borderColor,
+            boxShadow: '0 8px 24px rgba(16,24,40,.12)',
+          }}
         >
-          {lastActionResult.success ? (
-            <CheckCircle2 size={20} className="flex-shrink-0 mt-0.5" />
+          {isSuccess ? (
+            <CheckCircle2 size={16} className="text-ok flex-shrink-0 mt-0.5" strokeWidth={1.75} />
           ) : (
-            <XCircle size={20} className="flex-shrink-0 mt-0.5" />
+            <XCircle size={16} className="text-critical flex-shrink-0 mt-0.5" strokeWidth={1.75} />
           )}
           <div>
-            <p className="text-sm font-semibold">{lastActionResult.message}</p>
-            <p className="text-xs mt-0.5 opacity-70">
+            <p className="text-[13px] font-medium text-text">{lastActionResult.message}</p>
+            <p className="text-[12px] text-text-muted mt-0.5">
               {lastActionResult.simulated
-                ? '🛡 Simulation mode — no OS change was made'
-                : '⚡ Live mode — action executed directly on host process'}
+                ? 'Simulation mode — no OS change was made'
+                : 'Live mode — executed on host process'}
             </p>
           </div>
         </div>
@@ -68,132 +67,99 @@ export function ActionConfirmationModal() {
   const isDestructive = ['kill', 'restart', 'suspend'].includes(actionType)
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop: rgba(16,24,40,.40), no blur */}
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 dialog-overlay"
         onClick={() => !executingAction && setConfirmingAction(null)}
       />
 
-      {/* Modal Dialog */}
-      <div className="relative bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl z-10 border border-[#e2e8f0] space-y-5">
+      {/* Modal Dialog: 420px, 8px radius */}
+      <div
+        className="relative bg-surface rounded-lg max-w-[420px] w-full p-5 border border-border z-10 space-y-4"
+        style={{ boxShadow: '0 8px 24px rgba(16,24,40,.12)' }}
+        role="dialog"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div className="flex items-center gap-2">
+          {isDestructive ? (
+            <AlertTriangle size={18} className="text-critical flex-shrink-0" strokeWidth={1.75} />
+          ) : null}
+          <h2 className="text-[15px] font-semibold text-text">
+            Confirm {actionTitle}
+          </h2>
+        </div>
 
-        {/* Live Mode Warning Banner */}
+        {/* Live / Simulated Context */}
         {isLiveMode ? (
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#fef2f2] border-2 border-[#fca5a5] text-[#dc2626]">
-            <ShieldOff size={20} className="flex-shrink-0" />
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wide">⚠ Live Mode Active</p>
-              <p className="text-[11px] mt-0.5 text-[#991b1b]">
-                This action will be <strong>executed immediately</strong> on the real host process. There is no undo.
-              </p>
-            </div>
+          <div className="p-2.5 rounded border border-critical-border bg-critical-bg text-critical text-[12px]">
+            <span className="font-semibold block mb-0.5">Live mode active</span>
+            This action will execute directly on the operating system process.
           </div>
         ) : (
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#f0fdf4] border border-[#86efac] text-[#15803d]">
-            <Shield size={18} className="flex-shrink-0" />
-            <p className="text-xs font-semibold">
-              Simulation mode — action will be <strong>logged only</strong>, no OS change will be made.
-            </p>
+          <div className="p-2.5 rounded border border-border bg-surface-2 text-text-muted text-[12px]">
+            <span className="font-semibold text-text block mb-0.5">Simulation mode active</span>
+            This action will be logged only. No OS state will be changed.
           </div>
         )}
 
-        {/* Icon + Title */}
-        <div className="flex items-start gap-4">
-          <div
-            className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-              isDestructive
-                ? 'bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]'
-                : 'bg-[#fffbeb] text-[#d97706] border border-[#fde68a]'
-            }`}
-          >
-            {isDestructive ? <AlertTriangle size={20} /> : <Zap size={20} />}
+        {/* Process Details */}
+        <div className="p-2.5 rounded border border-border bg-surface-2 text-[12px] font-mono space-y-1">
+          <div className="flex justify-between">
+            <span className="text-text-muted font-sans">Target process:</span>
+            <span className="text-text font-medium">{processName}</span>
           </div>
-          <div>
-            <h3 className="text-lg font-bold text-[#0f172a]">
-              Confirm: {actionTitle}
-            </h3>
-            <p className="text-xs text-[#475569] mt-1 leading-relaxed">
-              Apply <strong className="text-[#0f172a]">{actionTitle}</strong> to{' '}
-              <strong className="text-[#0f172a]">{processName}</strong> (PID {pid}).
-            </p>
+          <div className="flex justify-between">
+            <span className="text-text-muted font-sans">PID:</span>
+            <span className="text-text font-medium">{pid}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-text-muted font-sans">Action:</span>
+            <span className="text-text font-medium">{actionType}</span>
           </div>
         </div>
 
-        {/* Action summary row */}
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] text-xs font-mono">
-          <span
-            className={`px-2 py-0.5 rounded font-bold uppercase text-white ${
-              isDestructive ? 'bg-[#dc2626]' : 'bg-[#0f172a]'
-            }`}
-          >
-            {actionType}
-          </span>
-          <span className="text-[#64748b]">→</span>
-          <span className="text-[#0f172a] font-semibold">{processName}</span>
-          <span className="text-[#94a3b8]">PID {pid}</span>
-          {isLiveMode && (
-            <span className="ml-auto px-2 py-0.5 rounded bg-[#fee2e2] text-[#dc2626] text-[10px] font-bold uppercase">
-              LIVE
-            </span>
-          )}
-        </div>
-
-        {/* Action-specific warnings */}
-        {isLiveMode && actionType === 'restart' && (
-          <div className="p-3 rounded-lg bg-[#fffbeb] border border-[#fde68a] text-xs text-[#92400e]">
-            <strong>Restart:</strong> The process will be killed and relaunched with its original command-line arguments.
-            If the process was started by a supervisor (systemd, launchd), the supervisor will handle the relaunch.
-          </div>
+        {/* Action description note */}
+        {actionType === 'kill' && (
+          <p className="text-[12px] text-text-muted leading-relaxed">
+            The target process will be terminated immediately via SIGKILL / TerminateProcess. Unsaved state may be lost.
+          </p>
         )}
-        {isLiveMode && actionType === 'kill' && (
-          <div className="p-3 rounded-lg bg-[#fef2f2] border border-[#fecaca] text-xs text-[#991b1b]">
-            <strong>Kill:</strong> The process will receive SIGKILL / TerminateProcess and will be terminated immediately.
-            Any unsaved data in the process may be lost.
-          </div>
+        {actionType === 'restart' && (
+          <p className="text-[12px] text-text-muted leading-relaxed">
+            The process will be stopped and restarted with its original command-line arguments.
+          </p>
         )}
-        {isLiveMode && actionType === 'suspend' && (
-          <div className="p-3 rounded-lg bg-[#fffbeb] border border-[#fde68a] text-xs text-[#92400e]">
-            <strong>Suspend:</strong> The process will be paused (SIGSTOP / NtSuspendProcess). Use Resume to unpause it.
-          </div>
-        )}
-        {isLiveMode && actionType === 'throttle' && (
-          <div className="p-3 rounded-lg bg-[#f0f9ff] border border-[#bae6fd] text-xs text-[#0369a1]">
-            <strong>Throttle:</strong> Sets the process to lowest CPU scheduling priority.
-            On Windows: IDLE_PRIORITY_CLASS. On Linux: nice=19.
-          </div>
+        {actionType === 'throttle' && (
+          <p className="text-[12px] text-text-muted leading-relaxed">
+            The process scheduling priority will be lowered to idle background class.
+          </p>
         )}
 
-        {/* Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#f1f5f9]">
+        {/* Footer Actions */}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
           <button
+            type="button"
             onClick={() => setConfirmingAction(null)}
             disabled={executingAction}
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-[#475569] bg-[#f1f5f9] hover:bg-[#e2e8f0] transition-colors disabled:opacity-50"
+            className="btn-secondary h-8 px-3 text-[12px]"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleApprove}
             disabled={executingAction}
-            className={`px-5 py-2 rounded-lg text-xs font-semibold text-white transition-colors shadow-sm flex items-center gap-2 disabled:opacity-70 ${
-              isLiveMode && isDestructive
-                ? 'bg-[#dc2626] hover:bg-[#b91c1c] ring-2 ring-[#dc2626]/30'
-                : isDestructive
-                ? 'bg-[#dc2626] hover:bg-[#b91c1c]'
-                : 'bg-[#10b981] hover:bg-[#059669]'
-            }`}
+            className={isDestructive ? 'btn-danger h-8 px-3 text-[12px]' : 'btn-primary h-8 px-3 text-[12px]'}
           >
             {executingAction ? (
               <>
-                <Loader2 size={15} className="animate-spin" />
-                {isLiveMode ? 'Executing on host…' : 'Simulating…'}
+                <Loader2 size={13} className="animate-spin" />
+                <span>Executing…</span>
               </>
             ) : (
-              <>
-                <CheckCircle2 size={15} />
-                {isLiveMode ? `⚡ Execute Live: ${actionTitle}` : `Simulate: ${actionTitle}`}
-              </>
+              <span>Confirm {actionTitle}</span>
             )}
           </button>
         </div>

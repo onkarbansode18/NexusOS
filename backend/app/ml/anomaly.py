@@ -119,6 +119,12 @@ def update_and_detect(
         pred  = int(model.predict(X)[0])   # 1 = normal, -1 = anomaly
         is_anomalous = pred == -1
 
+        # Real-world safety floor: negligible idle fluctuations (e.g. <5% CPU or <80 MB) are normal
+        if metric_name == "cpu_percent" and value < 5.0:
+            is_anomalous = False
+        elif metric_name == "memory_mb" and value < 80.0:
+            is_anomalous = False
+
         explanation = _explain(
             process_name=process_name,
             metric=metric_name,
@@ -186,30 +192,25 @@ def _explain(
     history: List[float],
     is_anomalous: bool,
 ) -> str:
-    """Generate a plain-English explanation for the anomaly result."""
+    """Generate a clean, plain-English explanation for human operators."""
     if not history:
-        return ""
+        return f"{process_name} activity is being observed."
 
     recent = history[-10:] if len(history) >= 10 else history
-    avg    = sum(recent) / len(recent)
-    pct_change = ((value - avg) / avg * 100) if avg > 0 else 0
-
-    metric_label = {
-        "cpu_percent":    "CPU usage",
-        "memory_mb":      "memory (RSS)",
-        "memory_percent": "memory %",
-    }.get(metric, metric)
-
-    unit = "%" if "percent" in metric else " MB"
+    avg = sum(recent) / len(recent)
 
     if is_anomalous:
-        direction = "spike" if value > avg else "drop"
-        return (
-            f"Process '{process_name}' {metric_label} anomaly detected: "
-            f"current={value:.1f}{unit}, recent avg={avg:.1f}{unit} "
-            f"({pct_change:+.0f}% {direction})."
-        )
-    return (
-        f"Process '{process_name}' {metric_label} normal: "
-        f"{value:.1f}{unit} (avg {avg:.1f}{unit})."
-    )
+        if "cpu" in metric:
+            return (
+                f"{process_name} experienced an elevated processor spike to {value:.1f}% "
+                f"(typical baseline is {avg:.1f}%)."
+            )
+        else:
+            return (
+                f"{process_name} memory climbed to {value:.0f} MB "
+                f"(typical baseline is {avg:.0f} MB)."
+            )
+
+    if "cpu" in metric:
+        return f"{process_name} processor usage is at a healthy {value:.1f}%."
+    return f"{process_name} memory allocation is steady at {value:.0f} MB."

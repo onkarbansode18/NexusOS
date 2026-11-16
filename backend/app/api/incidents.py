@@ -4,7 +4,7 @@ Nexus — Incidents API routes.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -23,34 +23,46 @@ class ActionOut(BaseModel):
     pid: int
     process_name: str
     simulated: bool
-    before_cpu: Optional[float]
-    before_memory_mb: Optional[float]
-    after_cpu: Optional[float]
-    after_memory_mb: Optional[float]
-    reason: str
+    before_cpu: Optional[float] = None
+    before_memory_mb: Optional[float] = None
+    after_cpu: Optional[float] = None
+    after_memory_mb: Optional[float] = None
+    reason: Optional[str] = ""
     executed_at: str
 
 
 class IncidentOut(BaseModel):
     id: str
-    pid: int
-    process_name: str
-    severity: str
-    status: str
-    description: str
-    prediction: Optional[str]
-    anomaly_score: Optional[float]
-    nl_summary: Optional[str]
-    nl_slack_message: Optional[str]
+    pid: Optional[int] = 0
+    process_name: Optional[str] = "process"
+    severity: Optional[str] = "warning"
+    status: Optional[str] = "open"
+    description: Optional[str] = ""
+    prediction: Optional[str] = None
+    anomaly_score: Optional[float] = None
+    nl_summary: Optional[str] = None
+    nl_slack_message: Optional[str] = None
     detected_at: str
-    resolved_at: Optional[str]
-    actions: List[ActionOut]
+    resolved_at: Optional[str] = None
+    actions: List[ActionOut] = []
+
+
+def _format_dt(dt: Any) -> str:
+    if dt is None:
+        return ""
+    if hasattr(dt, "isoformat"):
+        return dt.isoformat()
+    s = str(dt).strip()
+    if " " in s and "T" not in s:
+        # Normalize "2026-10-31 17:30:41.677848" to ISO "2026-10-31T17:30:41.677848"
+        s = s.replace(" ", "T")
+    return s
 
 
 @router.get("/", response_model=List[IncidentOut])
 async def list_incidents(
     status: Optional[str] = None,
-    limit: int = 100,
+    limit: int = 500,
     db: AsyncSession = Depends(get_db),
     _user: str = Depends(get_current_user),
 ) -> List[IncidentOut]:
@@ -58,17 +70,17 @@ async def list_incidents(
     return [
         IncidentOut(
             id=inc.id,
-            pid=inc.pid,
-            process_name=inc.process_name,
-            severity=inc.severity,
-            status=inc.status,
-            description=inc.description,
+            pid=inc.pid or 0,
+            process_name=inc.process_name or "process",
+            severity=inc.severity or "warning",
+            status=inc.status or "open",
+            description=inc.description or "",
             prediction=inc.prediction,
             anomaly_score=inc.anomaly_score,
             nl_summary=inc.nl_summary,
             nl_slack_message=inc.nl_slack_message,
-            detected_at=inc.detected_at.isoformat(),
-            resolved_at=inc.resolved_at.isoformat() if inc.resolved_at else None,
+            detected_at=_format_dt(inc.detected_at),
+            resolved_at=_format_dt(inc.resolved_at) if inc.resolved_at else None,
             actions=[
                 ActionOut(
                     id=a.id,
@@ -81,8 +93,8 @@ async def list_incidents(
                     before_memory_mb=a.before_memory_mb,
                     after_cpu=a.after_cpu,
                     after_memory_mb=a.after_memory_mb,
-                    reason=a.reason,
-                    executed_at=a.executed_at.isoformat(),
+                    reason=a.reason or "",
+                    executed_at=_format_dt(a.executed_at),
                 )
                 for a in (inc.actions or [])
             ],

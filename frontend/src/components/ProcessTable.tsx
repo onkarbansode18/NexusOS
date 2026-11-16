@@ -1,26 +1,22 @@
 import React, { useState } from 'react'
-import { Search, ArrowUpDown, ShieldAlert, AlertTriangle, CheckCircle, Eye } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useNexusStore } from '../store'
 import type { ProcessSnapshot } from '../types'
 
 export function ProcessTable() {
   const { processes, policy, setSelectedProcess } = useNexusStore()
   const [searchTerm, setSearchTerm] = useState('')
-  const [activeTab, setActiveTab] = useState<'all' | 'critical' | 'warning' | 'observation' | 'healthy'>('all')
+  const [activeTab, setActiveTab] = useState<'all' | 'critical' | 'warning' | 'healthy'>('all')
 
-  const getHealthStatus = (p: ProcessSnapshot): 'critical' | 'warning' | 'under_observation' | 'healthy' => {
+  const getHealthStatus = (p: ProcessSnapshot): 'critical' | 'warning' | 'healthy' => {
     if (p.health_status && p.health_status !== 'healthy') return p.health_status as any
-    const cpuCrit = policy?.cpu_critical_pct ?? 50
-    const ramCrit = policy?.ram_critical_pct ?? 92
-    const cpuWarn = policy?.cpu_warning_pct ?? 30
-    const ramWarn = policy?.ram_warning_pct ?? 80
+    const cpuCrit = policy?.cpu_critical_pct ?? 80
+    const ramCrit = policy?.ram_critical_pct ?? 90
+    const cpuWarn = policy?.cpu_warning_pct ?? 60
+    const ramWarn = policy?.ram_warning_pct ?? 70
 
-    if (p.cpu_percent >= cpuCrit || p.memory_percent >= ramCrit || p.memory_mb >= 2048) {
-      return 'critical'
-    }
-    if (p.cpu_percent >= cpuWarn || p.memory_percent >= ramWarn) {
-      return 'warning'
-    }
+    if (p.cpu_percent >= cpuCrit || p.memory_percent >= ramCrit) return 'critical'
+    if (p.cpu_percent >= cpuWarn || p.memory_percent >= ramWarn) return 'warning'
     return 'healthy'
   }
 
@@ -28,11 +24,9 @@ export function ProcessTable() {
     all: processes.length,
     critical: processes.filter((p) => getHealthStatus(p) === 'critical').length,
     warning: processes.filter((p) => getHealthStatus(p) === 'warning').length,
-    observation: processes.filter((p) => getHealthStatus(p) === 'under_observation').length,
     healthy: processes.filter((p) => getHealthStatus(p) === 'healthy').length,
   }
 
-  // Filter processes
   const filtered = processes.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,140 +38,125 @@ export function ProcessTable() {
     const status = getHealthStatus(p)
     if (activeTab === 'critical') return status === 'critical'
     if (activeTab === 'warning') return status === 'warning'
-    if (activeTab === 'observation') return status === 'under_observation'
     if (activeTab === 'healthy') return status === 'healthy'
     return true
   })
 
-  const getStatusBadge = (p: ProcessSnapshot) => {
-    const status = getHealthStatus(p)
-    if (status === 'critical') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#dc2626]" /> Critical
-        </span>
-      )
-    }
-    if (status === 'warning') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#fffbeb] text-[#d97706] border border-[#fde68a]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" /> Warning
-        </span>
-      )
-    }
-    if (status === 'under_observation') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#f5f3ff] text-[#7c3aed] border border-[#ddd6fe]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#7c3aed]" /> Under observation
-        </span>
-      )
-    }
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#ecfdf5] text-[#059669] border border-[#a7f3d0]">
-        <span className="w-1.5 h-1.5 rounded-full bg-[#059669]" /> Healthy
-      </span>
-    )
-  }
-
   return (
-    <div className="space-y-4">
-      {/* Search Bar & Filter Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        {/* Search */}
-        <div className="relative w-full sm:w-80">
-          <Search size={16} className="absolute left-3 top-2.5 text-[#94a3b8]" />
+    <div className="nexus-panel">
+      {/* Header Toolbar */}
+      <div className="nexus-panel-header">
+        <div className="relative w-64">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" strokeWidth={1.75} />
           <input
             type="text"
-            placeholder="Search name, PID, or user"
+            placeholder="Filter processes..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-[#e2e8f0] bg-white focus:outline-none focus:border-[#10b981]"
+            className="nexus-input pl-8 w-full text-[12px]"
           />
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 bg-[#f1f5f9] p-1 rounded-xl text-xs font-medium">
+        {/* Tab filters */}
+        <div className="inline-flex rounded border border-border p-0.5 bg-surface-2 text-[11px] font-mono">
           <button
+            type="button"
             onClick={() => setActiveTab('all')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'all' ? 'bg-white text-[#0f172a] shadow-xs font-semibold' : 'text-[#64748b] hover:text-[#0f172a]'
+            className={`px-2 py-0.5 rounded-xs transition-colors ${
+              activeTab === 'all' ? 'bg-surface text-text font-semibold shadow-xs' : 'text-text-muted hover:text-text'
             }`}
           >
-            All <span className="text-[#94a3b8] font-mono ml-1">{counts.all}</span>
+            All ({counts.all})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('critical')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'critical' ? 'bg-white text-[#dc2626] shadow-xs font-semibold' : 'text-[#64748b] hover:text-[#0f172a]'
+            className={`px-2 py-0.5 rounded-xs transition-colors ${
+              activeTab === 'critical' ? 'bg-surface text-critical font-semibold shadow-xs' : 'text-text-muted hover:text-text'
             }`}
           >
-            Critical <span className="text-[#dc2626] font-mono ml-1">{counts.critical}</span>
+            Critical ({counts.critical})
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('warning')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'warning' ? 'bg-white text-[#d97706] shadow-xs font-semibold' : 'text-[#64748b] hover:text-[#0f172a]'
+            className={`px-2 py-0.5 rounded-xs transition-colors ${
+              activeTab === 'warning' ? 'bg-surface text-warning font-semibold shadow-xs' : 'text-text-muted hover:text-text'
             }`}
           >
-            Warning <span className="text-[#d97706] font-mono ml-1">{counts.warning}</span>
+            Warning ({counts.warning})
           </button>
           <button
-            onClick={() => setActiveTab('observation')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'observation' ? 'bg-white text-[#7c3aed] shadow-xs font-semibold' : 'text-[#64748b] hover:text-[#0f172a]'
-            }`}
-          >
-            Observation <span className="text-[#7c3aed] font-mono ml-1">{counts.observation}</span>
-          </button>
-          <button
+            type="button"
             onClick={() => setActiveTab('healthy')}
-            className={`px-3 py-1.5 rounded-lg transition-colors ${
-              activeTab === 'healthy' ? 'bg-white text-[#059669] shadow-xs font-semibold' : 'text-[#64748b] hover:text-[#0f172a]'
+            className={`px-2 py-0.5 rounded-xs transition-colors ${
+              activeTab === 'healthy' ? 'bg-surface text-ok font-semibold shadow-xs' : 'text-text-muted hover:text-text'
             }`}
           >
-            Healthy <span className="text-[#059669] font-mono ml-1">{counts.healthy}</span>
+            Healthy ({counts.healthy})
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
+      <div className="nexus-table-wrap">
         <table className="nexus-table">
           <thead>
             <tr>
-              <th className="flex items-center gap-1">Process <ArrowUpDown size={12} /></th>
-              <th>Status</th>
-              <th>CPU % <ArrowUpDown size={12} /></th>
-              <th>Memory % <ArrowUpDown size={12} /></th>
+              <th style={{ width: 80 }}>PID</th>
+              <th>Process name</th>
+              <th>User</th>
+              <th style={{ width: 140 }}>CPU %</th>
+              <th style={{ width: 140 }}>Memory (MB)</th>
+              <th style={{ width: 100 }}>Status</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="text-center py-8 text-[#94a3b8]">
+                <td colSpan={6} className="p-6 text-center text-text-muted">
                   No matching processes found.
                 </td>
               </tr>
             ) : (
-              filtered.map((p) => (
-                <tr
-                  key={p.pid}
-                  onClick={() => setSelectedProcess(p)}
-                  className="cursor-pointer"
-                >
-                  <td className="font-semibold text-[#0f172a]">
-                    <div className="flex items-center gap-2">
-                      <span>{p.name}</span>
-                      <span className="text-xs text-[#94a3b8] font-mono font-normal">
-                        PID {p.pid} · {p.username}
+              filtered.map((proc) => {
+                const status = getHealthStatus(proc)
+                return (
+                  <tr
+                    key={proc.pid}
+                    onClick={() => setSelectedProcess(proc)}
+                    className="cursor-pointer"
+                  >
+                    <td className="font-mono text-text-muted text-[12px]">{proc.pid}</td>
+                    <td className="font-mono text-text font-medium text-[13px]">{proc.name}</td>
+                    <td className="text-text-muted text-[12px]">{proc.username}</td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono tabular-nums text-[12px] w-12 text-right">
+                          {proc.cpu_percent.toFixed(1)}%
+                        </span>
+                        <div className="flex-1 bg-surface-3 h-1 rounded overflow-hidden max-w-[60px]">
+                          <div className="h-full bg-accent" style={{ width: `${Math.min(proc.cpu_percent, 100)}%` }} />
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono tabular-nums text-[12px] w-12 text-right">
+                          {proc.memory_mb.toFixed(0)}
+                        </span>
+                        <div className="flex-1 bg-surface-3 h-1 rounded overflow-hidden max-w-[60px]">
+                          <div className="h-full bg-[#6B7A90]" style={{ width: `${Math.min(proc.memory_percent, 100)}%` }} />
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${status === 'critical' ? 'badge-critical' : status === 'warning' ? 'badge-warning' : 'badge-ok'}`}>
+                        {status}
                       </span>
-                    </div>
-                  </td>
-                  <td>{getStatusBadge(p)}</td>
-                  <td className="font-mono text-xs font-semibold text-[#0f172a]">{p.cpu_percent.toFixed(1)}%</td>
-                  <td className="font-mono text-xs font-semibold text-[#0f172a]">{p.memory_percent.toFixed(1)}%</td>
-                </tr>
-              ))
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

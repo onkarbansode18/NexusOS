@@ -18,6 +18,9 @@ ENV/
 .env
 *.env
 !*.env.example
+alert_settings.json
+alert_history.json
+user_classifications.json
 
 # ── SQLite databases ──────────────────────────────────────────────────────────
 *.db

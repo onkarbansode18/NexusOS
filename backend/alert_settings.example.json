@@ -1,0 +1,10 @@
+{
+  "email": "your_alert_destination@gmail.com",
+  "email_enabled": true,
+  "critical_threshold_score": -0.75,
+  "cooldown_seconds": 180,
+  "smtp_host": "smtp.gmail.com",
+  "smtp_port": 587,
+  "smtp_user": "your_sender_gmail@gmail.com",
+  "smtp_password": "your_16_char_app_password"
+}

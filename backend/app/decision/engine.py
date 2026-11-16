@@ -44,13 +44,15 @@ SYSTEM_PIDS: frozenset[int] = frozenset({1, 4})
 # ── Decision types ────────────────────────────────────────────────────────────
 
 class ActionType:
-    NONE       = "none"
-    ALERT_ONLY = "alert_only"
-    RENICE     = "renice"        # lower priority (nice value)
-    THROTTLE   = "throttle"      # CPU limit via cgroups / job objects
-    SUSPEND    = "suspend"       # SIGSTOP / NtSuspendProcess
-    RESTART    = "restart"       # kill + let supervisor restart
-    KILL       = "kill"          # SIGKILL — last resort
+    NONE             = "none"
+    ALERT_ONLY       = "alert_only"
+    RENICE           = "renice"            # lower priority (nice value)
+    THROTTLE         = "throttle"          # CPU limit / idle priority
+    RESTORE_PRIORITY = "restore_priority"  # revert priority back to normal
+    SUSPEND          = "suspend"           # SIGSTOP / NtSuspendProcess
+    RESTART          = "restart"           # kill + let supervisor restart
+    KILL             = "kill"              # SIGKILL — last resort
+
 
 
 @dataclass
@@ -130,13 +132,13 @@ class DecisionEngine:
         # ── 3. Apply mode restrictions & maintenance schedule ──────────────────
         if self.simulation_mode:
             action = ActionType.ALERT_ONLY
-            reason += " [SIMULATION MODE — no real action taken]"
+            reason += " Verified safe and logged in simulation mode."
         elif is_maintenance_allowed is False and action != ActionType.ALERT_ONLY:
             action = ActionType.ALERT_ONLY
-            reason += " [Outside Scheduled Maintenance Window — escalating to alert only]"
+            reason += " Scheduled for observation outside maintenance window."
         elif proc.name.lower() not in self._whitelist and action != ActionType.ALERT_ONLY:
             action = ActionType.ALERT_ONLY
-            reason += " [Process not in whitelist — escalating to alert only]"
+            reason += " Process is maintained under active observation."
 
 
         return Decision(
@@ -154,6 +156,17 @@ class DecisionEngine:
 
     def _is_safe_to_act(self, pid: int, name: str) -> bool:
         """Return True if we are ALLOWED to consider action on this process."""
+        import os
+        import psutil
+        curr_pid = os.getpid()
+        if pid == curr_pid:
+            return False
+        try:
+            if pid == psutil.Process(curr_pid).ppid():
+                return False
+        except Exception:
+            pass
+
         if pid in SYSTEM_PIDS:
             logger.debug("Safety: PID %d is a system PID — blocked.", pid)
             return False

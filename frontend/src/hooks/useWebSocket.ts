@@ -14,7 +14,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { setWsConnected, setMetrics, setProcesses, addIncident, setPolicy, fetchPolicy } = useNexusStore()
+  const { setWsConnected, setMetrics, setProcesses, addIncident, resolveIncident, addAction, setPolicy, fetchPolicy, loadIncidents, loadProcesses } = useNexusStore()
 
   useEffect(() => {
     let alive = true
@@ -29,6 +29,8 @@ export function useWebSocket() {
           if (!alive) return
           setWsConnected(true)
           fetchPolicy()
+          loadIncidents()
+          loadProcesses()
           console.log('[Nexus WS] connected')
         }
 
@@ -75,14 +77,44 @@ export function useWebSocket() {
                   id:           d.id           ?? crypto.randomUUID(),
                   pid:          d.pid          ?? 0,
                   process_name: d.process_name ?? 'unknown',
+                  title:        d.reason       ? d.reason.slice(0, 60) : `Anomaly on ${d.process_name ?? 'process'}`,
                   severity:     d.severity     ?? 'warning',
-                  status:       d.status       ?? 'open',
+                  status:       'open',
                   description:  d.reason       ?? d.description ?? '',
                   prediction:   d.prediction,
                   anomaly_score: d.anomaly_score ?? 0,
+                  nl_summary:   d.nl_summary,
                   detected_at:  msg.ts         ?? new Date().toISOString(),
-                  actions:      d.actions      ?? [],
+                  actions:      [],
                 })
+              }
+            } else if (msg.event === 'action') {
+              const d = msg.data
+              if (d) {
+                addAction({
+                  id: d.id || `act-${Date.now()}`,
+                  incident_id: d.incident_id || 'manual',
+                  action_type: d.action_type,
+                  action_title: d.action_title || `${d.action_type} ${d.process_name}`,
+                  pid: d.pid,
+                  process_name: d.process_name,
+                  simulated: d.simulated,
+                  status_text: d.simulated ? 'Simulated' : 'Executed',
+                  before_cpu: d.before_cpu ?? 0,
+                  before_memory_mb: d.before_memory_mb ?? 0,
+                  after_cpu: d.after_cpu,
+                  after_memory_mb: d.after_memory_mb,
+                  executed_at: d.executed_at || new Date().toLocaleTimeString(),
+                  reason: d.reason || '',
+                })
+                if (d.action_type === 'kill' && !d.simulated && d.success) {
+                  loadProcesses()
+                }
+              }
+            } else if (msg.event === 'incident_resolved') {
+              const d = msg.data
+              if (d && d.id) {
+                resolveIncident(d.id)
               }
             } else if (msg.event === 'policy_update') {
               setPolicy(msg.data as Partial<Policy>)
@@ -114,5 +146,5 @@ export function useWebSocket() {
       if (reconnectRef.current) clearTimeout(reconnectRef.current)
       wsRef.current?.close()
     }
-  }, [setWsConnected, setMetrics, setProcesses, addIncident, setPolicy])
+  }, [setWsConnected, setMetrics, setProcesses, addIncident, setPolicy, fetchPolicy, loadIncidents])
 }

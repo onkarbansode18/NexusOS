@@ -1,8 +1,11 @@
 export { Dashboard } from './Dashboard'
+export { MonitoringPage } from './MonitoringPage'
 export { ProcessesPage } from './ProcessesPage'
 export { IncidentsPage } from './IncidentsPage'
 export { PolicyPage } from './PolicyPage'
 export { SettingsPage } from './SettingsPage'
 export { PredictionsPage } from './PredictionsPage'
 export { MaintenancePage } from './MaintenancePage'
+export { ApplicationManagerPage } from './ApplicationManagerPage'
+export { HibernatorPage } from './HibernatorPage'
 

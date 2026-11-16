@@ -36,6 +36,32 @@ async def init_db() -> None:
     """Create all tables (idempotent — safe to call on every startup)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    if "sqlite" in settings.database_url:
+        import sqlite3
+        try:
+            db_path = settings.database_url.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
+            c = sqlite3.connect(db_path)
+            cur = c.cursor()
+            cols = [col[1] for col in cur.execute("PRAGMA table_info(incidents)").fetchall()]
+            if cols:
+                if "nl_summary" not in cols:
+                    cur.execute("ALTER TABLE incidents ADD COLUMN nl_summary TEXT")
+                if "nl_slack_message" not in cols:
+                    cur.execute("ALTER TABLE incidents ADD COLUMN nl_slack_message TEXT")
+            act_cols = [col[1] for col in cur.execute("PRAGMA table_info(healing_actions)").fetchall()]
+            if act_cols:
+                if "verification_state" not in act_cols:
+                    cur.execute("ALTER TABLE healing_actions ADD COLUMN verification_state VARCHAR(64)")
+                if "verification_summary" not in act_cols:
+                    cur.execute("ALTER TABLE healing_actions ADD COLUMN verification_summary TEXT")
+                if "verified_at" not in act_cols:
+                    cur.execute("ALTER TABLE healing_actions ADD COLUMN verified_at TIMESTAMP")
+            c.commit()
+            c.close()
+        except Exception:
+            pass
+
     await _seed_default_policy()
 
 

@@ -7,6 +7,13 @@ from .models import (
     IncidentRecord,
     HealingActionRecord,
     PolicyRecord,
+    RootCauseDiagnosisRecord,
+    DiskCleanupRecord,
+    RecoveryVerificationRecord,
+    RLAgentConfigRecord,
+    RLTrainingEpisodeRecord,
+    RLDecisionRecord,
+    RLModelMetadataRecord,
 )
 from .crud import (
     save_system_metrics,
@@ -16,9 +23,19 @@ from .crud import (
     create_incident,
     get_incidents,
     resolve_incident,
+    get_active_incident_for_process,
     log_action,
+    get_action_by_id,
+    get_healing_actions,
     get_policy,
     update_policy,
+    create_rca_diagnosis,
+    get_rca_by_incident,
+    get_recent_rcas,
+    create_disk_cleanup_record,
+    get_disk_cleanup_records,
+    create_recovery_verification,
+    get_recovery_verifications,
 )
 
 __all__ = [
@@ -26,9 +43,16 @@ __all__ = [
     "Base",
     "SystemMetricsRecord", "ProcessMetricsRecord",
     "IncidentRecord", "HealingActionRecord", "PolicyRecord",
+    "RootCauseDiagnosisRecord", "DiskCleanupRecord", "RecoveryVerificationRecord",
+    "RLAgentConfigRecord", "RLTrainingEpisodeRecord", "RLDecisionRecord", "RLModelMetadataRecord",
     "save_system_metrics", "get_recent_system_metrics", "prune_old_metrics",
     "get_process_history",
     "create_incident", "get_incidents", "resolve_incident",
-    "log_action",
+    "get_active_incident_for_process",
+    "log_action", "get_action_by_id", "get_healing_actions",
     "get_policy", "update_policy",
+    "create_rca_diagnosis", "get_rca_by_incident", "get_recent_rcas",
+    "create_disk_cleanup_record", "get_disk_cleanup_records",
+    "create_recovery_verification", "get_recovery_verifications",
 ]
+

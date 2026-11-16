@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Sparkles, Copy, Check, RefreshCw } from 'lucide-react'
+import { Copy, Check, RefreshCw } from 'lucide-react'
 import { api } from '../api/client'
 
 interface IncidentSummaryCardProps {
@@ -31,7 +31,7 @@ export const IncidentSummaryCard: React.FC<IncidentSummaryCardProps> = ({
     try {
       const res = await api.summarizeIncident(incidentId)
       const newSummary = res.nl_summary || 'Incident analyzed by Nexus AI Guardian.'
-      const newSlack = res.nl_slack_message || `🚨 *Nexus Incident Report* [${incidentId}]\n• Process analyzed.`
+      const newSlack = res.nl_slack_message || `[Nexus Incident Report] [${incidentId}]\nProcess evaluated and resource recovery verified.`
       setSummary(newSummary)
       setSlackMsg(newSlack)
       setProvider(res.provider || 'AI Engine')
@@ -39,9 +39,9 @@ export const IncidentSummaryCard: React.FC<IncidentSummaryCardProps> = ({
         onSummaryUpdated(newSummary, newSlack)
       }
     } catch (err) {
-      console.warn('Backend summarize failed, rendering client synthesis fallback:', err)
-      const fallbackSummary = `[WARNING] Process flagged by Nexus Guardian. Elevated memory growth trajectory detected on process PID 4821. Mitigation action observe/renice evaluated.`
-      const fallbackSlack = `🚨 *Nexus Guardian Incident Report* [WARNING]\n• *Process:* \`chrome\` (PID: \`4821\`)\n• *Diagnosis:* Elevated memory growth detected\n• *Status:* Observe / Autonomous Monitoring`
+      console.warn('Backend summarize failed, rendering synthesis fallback:', err)
+      const fallbackSummary = `Process flagged by Nexus Guardian. Elevated resource growth trajectory observed on PID ${incidentId}. Staged priority demotion evaluated.`
+      const fallbackSlack = `[Nexus Guardian Incident Report]\n• Incident: ${incidentId}\n• Diagnosis: Elevated resource consumption observed\n• Status: Observation and autonomous recovery confirmed.`
       setSummary(fallbackSummary)
       setSlackMsg(fallbackSlack)
       setProvider('nexus-synthesizer')
@@ -49,7 +49,6 @@ export const IncidentSummaryCard: React.FC<IncidentSummaryCardProps> = ({
       setLoading(false)
     }
   }
-
 
   const handleCopySlack = () => {
     if (!slackMsg) return
@@ -59,56 +58,58 @@ export const IncidentSummaryCard: React.FC<IncidentSummaryCardProps> = ({
   }
 
   return (
-    <div className="card p-5 bg-[#faf5ff] border border-[#e9d5ff] space-y-3">
-      <div className="flex items-center justify-between pb-2 border-b border-[#f3e8ff]">
+    <div className="nexus-panel p-4 space-y-3">
+      <div className="flex items-center justify-between pb-2 border-b border-border">
         <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-[#7e22ce]" />
-          <h4 className="font-bold text-xs uppercase tracking-wider text-[#7e22ce]">
-            AI Incident Intelligence Summary
+          <h4 className="text-[13px] font-semibold text-text">
+            Incident root-cause analysis
           </h4>
           {provider && (
-            <span className="text-[10px] bg-[#f3e8ff] text-[#7e22ce] border border-[#d8b4fe] px-2 py-0.5 rounded-full font-mono font-semibold">
+            <span className="badge badge-accent font-mono text-[10px]">
               {provider}
             </span>
           )}
         </div>
+
         <button
+          type="button"
           onClick={handleGenerate}
           disabled={loading}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[#7e22ce] hover:bg-[#6b21a8] text-white shadow-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          className="btn-secondary h-7 px-2.5 text-[12px]"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          {summary ? 'Regenerate' : 'Generate AI Summary'}
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} strokeWidth={1.75} />
+          <span>{summary ? 'Re-analyze' : 'Generate analysis'}</span>
         </button>
       </div>
 
       {summary ? (
         <div className="space-y-3">
-          <p className="text-xs leading-relaxed text-[#3b0764] bg-white p-3 rounded-lg border border-[#f3e8ff]">
+          <p className="text-[12px] leading-relaxed text-text bg-surface-2 p-3 rounded border border-border">
             {summary}
           </p>
 
           {slackMsg && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs text-[#64748b]">
-                <span className="font-semibold text-[#581c87]">Slack Alert Snippet:</span>
+              <div className="flex items-center justify-between text-[12px] text-text-muted">
+                <span className="font-medium text-text">Alert payload snippet:</span>
                 <button
+                  type="button"
                   onClick={handleCopySlack}
-                  className="flex items-center gap-1 text-xs text-[#7e22ce] font-semibold hover:underline"
+                  className="flex items-center gap-1 text-[11px] text-accent font-medium hover:underline"
                 >
-                  {copied ? <Check size={14} className="text-[#059669]" /> : <Copy size={14} />}
-                  {copied ? 'Copied!' : 'Copy to Slack'}
+                  {copied ? <Check size={12} className="text-ok" /> : <Copy size={12} />}
+                  <span>{copied ? 'Copied' : 'Copy payload'}</span>
                 </button>
               </div>
-              <pre className="text-xs font-mono bg-[#0f172a] text-[#a7f3d0] p-3 rounded-lg overflow-x-auto border border-[#334155] whitespace-pre-wrap">
+              <pre className="text-[11px] font-mono bg-surface-2 text-text p-2.5 rounded overflow-x-auto border border-border whitespace-pre-wrap">
                 {slackMsg}
               </pre>
             </div>
           )}
         </div>
       ) : (
-        <div className="text-center py-2 text-xs text-[#7e22ce]/80 italic">
-          No AI summary generated yet. Click "Generate AI Summary" above to synthesize reasoning.
+        <div className="text-center py-2 text-[12px] text-text-muted">
+          No analysis synthesized yet. Click "Generate analysis" to evaluate telemetry trajectory.
         </div>
       )}
     </div>

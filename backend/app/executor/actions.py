@@ -243,6 +243,41 @@ class ActionExecutor:
         except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError) as exc:
             return self._error("resume", pid, process_name, reason, str(exc))
 
+    def restore_priority(self, pid: int, process_name: str) -> ActionResult:
+        """Restore process scheduling priority to normal (reversible action)."""
+        reason = "Restore process scheduling priority to normal."
+        blocked = self._safety_check(pid, process_name)
+        if blocked:
+            return self._blocked(ActionType.RESTORE_PRIORITY, pid, process_name, blocked)
+
+        before_cpu, before_mem = self._snapshot(pid)
+
+        if self.simulation_mode:
+            logger.info("[SIM] Would restore normal priority for PID %d (%s)", pid, process_name)
+            return ActionResult(
+                action_type=ActionType.RESTORE_PRIORITY, pid=pid, process_name=process_name,
+                simulated=True, success=True, reason=reason,
+                before_cpu=before_cpu, before_memory_mb=before_mem,
+            )
+
+        try:
+            proc = psutil.Process(pid)
+            if _IS_WINDOWS:
+                proc.nice(psutil.NORMAL_PRIORITY_CLASS)
+            else:
+                proc.nice(0)
+            logger.info("Restored normal priority for PID %d (%s)", pid, process_name)
+            after_cpu, after_mem = self._snapshot(pid)
+            return ActionResult(
+                action_type=ActionType.RESTORE_PRIORITY, pid=pid, process_name=process_name,
+                simulated=False, success=True, reason=reason,
+                before_cpu=before_cpu, before_memory_mb=before_mem,
+                after_cpu=after_cpu, after_memory_mb=after_mem,
+            )
+        except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError) as exc:
+            return self._error(ActionType.RESTORE_PRIORITY, pid, process_name, reason, str(exc),
+                               before_cpu, before_mem)
+
     def restart(self, pid: int, process_name: str) -> ActionResult:
         """
         Kill the process and relaunch it using the same command-line arguments.
@@ -361,13 +396,35 @@ class ActionExecutor:
         try:
             proc = psutil.Process(pid)
             proc.kill()
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                pass
             logger.critical("Killed PID %d (%s)", pid, process_name)
             return ActionResult(
                 action_type=ActionType.KILL, pid=pid, process_name=process_name,
                 simulated=False, success=True, reason=reason,
                 before_cpu=before_cpu, before_memory_mb=before_mem,
             )
-        except (psutil.NoSuchProcess, psutil.AccessDenied, PermissionError) as exc:
+        except psutil.NoSuchProcess:
+            return ActionResult(
+                action_type=ActionType.KILL, pid=pid, process_name=process_name,
+                simulated=False, success=True, reason=reason + " (Process had already exited)",
+                before_cpu=before_cpu, before_memory_mb=before_mem,
+            )
+        except (psutil.AccessDenied, PermissionError) as exc:
+            if _IS_WINDOWS:
+                try:
+                    res = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, text=True, timeout=3)
+                    if res.returncode == 0 or not psutil.pid_exists(pid):
+                        logger.critical("Killed PID %d (%s) via taskkill", pid, process_name)
+                        return ActionResult(
+                            action_type=ActionType.KILL, pid=pid, process_name=process_name,
+                            simulated=False, success=True, reason=reason + " (Terminated via taskkill)",
+                            before_cpu=before_cpu, before_memory_mb=before_mem,
+                        )
+                except Exception as tk_err:
+                    logger.warning("taskkill fallback error for PID %d: %s", pid, tk_err)
             return self._error(ActionType.KILL, pid, process_name, reason, str(exc),
                                before_cpu, before_mem)
 
@@ -383,14 +440,16 @@ class ActionExecutor:
                 reason: str = "") -> ActionResult:
         """Dispatch to the correct action method by action_type string."""
         dispatch = {
-            ActionType.RENICE:     lambda: self.renice(pid, process_name),
-            "throttle":            lambda: self.throttle(pid, process_name),
-            ActionType.SUSPEND:    lambda: self.suspend(pid, process_name),
-            "resume":              lambda: self.resume(pid, process_name),
-            ActionType.RESTART:    lambda: self.restart(pid, process_name),
-            ActionType.KILL:       lambda: self.kill(pid, process_name),
-            ActionType.ALERT_ONLY: lambda: self.alert_only(pid, process_name, reason),
-            "observe":             lambda: self.alert_only(pid, process_name, reason or "Observing process."),
+            ActionType.RENICE:           lambda: self.renice(pid, process_name),
+            "throttle":                  lambda: self.throttle(pid, process_name),
+            ActionType.RESTORE_PRIORITY: lambda: self.restore_priority(pid, process_name),
+            "normalize":                 lambda: self.restore_priority(pid, process_name),
+            ActionType.SUSPEND:          lambda: self.suspend(pid, process_name),
+            "resume":                    lambda: self.resume(pid, process_name),
+            ActionType.RESTART:          lambda: self.restart(pid, process_name),
+            ActionType.KILL:             lambda: self.kill(pid, process_name),
+            ActionType.ALERT_ONLY:       lambda: self.alert_only(pid, process_name, reason),
+            "observe":                   lambda: self.alert_only(pid, process_name, reason or "Observing process."),
         }
         fn = dispatch.get(action_type)
         if fn is None:

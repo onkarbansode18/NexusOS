@@ -81,11 +81,10 @@ export function PolicyPanel() {
       <div className={`card p-6 border-l-4 ${policy?.simulation_mode ? 'border-l-[#10b981]' : 'border-l-[#dc2626]'}`}>
         {/* Live Mode Warning Banner */}
         {!policy?.simulation_mode && (
-          <div className="mb-4 flex items-center gap-3 p-3 rounded-xl bg-[#fef2f2] border-2 border-[#fca5a5] text-[#dc2626]">
-            <span className="text-lg">⚠️</span>
+          <div className="mb-4 flex items-center gap-3 p-3 rounded bg-critical-bg border border-critical-border text-critical">
             <div>
-              <p className="text-xs font-bold uppercase tracking-widest">Live Healing Mode Active</p>
-              <p className="text-[11px] text-[#991b1b] mt-0.5">
+              <p className="text-xs font-semibold uppercase tracking-wider">Live healing mode active</p>
+              <p className="text-[11px] mt-0.5">
                 The guardian is executing real OS operations. Restart, Kill, Throttle and Suspend will affect actual processes on this machine.
               </p>
             </div>
@@ -128,7 +127,7 @@ export function PolicyPanel() {
                 : 'bg-[#dc2626] text-white hover:bg-[#b91c1c]'
             }`}
           >
-            <span>Switch to {policy?.simulation_mode ? '⚡ LIVE HEALING MODE' : '🛡 SIMULATION MODE'}</span>
+            <span>Switch to {policy?.simulation_mode ? 'Live Healing Mode' : 'Simulation Mode'}</span>
           </button>
         </div>
       </div>

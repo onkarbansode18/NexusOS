@@ -61,5 +61,5 @@ async def list_processes(_user: str = Depends(get_current_user)) -> List[Process
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 
-    procs.sort(key=lambda x: x.cpu_percent, reverse=True)
-    return procs[:100]
+    procs.sort(key=lambda x: (x.cpu_percent, x.memory_mb), reverse=True)
+    return procs

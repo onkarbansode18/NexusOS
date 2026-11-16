@@ -1,6 +1,6 @@
 """
-Nexus API Gateway — main application entry point.
-Registers all routers: Auth, Metrics, Incidents, Policy, Actions, Processes, Reports, WebSockets.
+# Nexus API Gateway — main application entry point.
+# Adaptive AI Double DQN active.
 """
 
 from __future__ import annotations
@@ -21,6 +21,12 @@ from app.api.processes import router as processes_router
 from app.api.reports import router as reports_router
 from app.api.feedback import router as feedback_router
 from app.api.maintenance import router as maintenance_router
+from app.api.healing import router as healing_router
+from app.api.rl import router as rl_router
+from app.api.applications import router as applications_router
+from app.api.hibernator import router as hibernator_router
+from app.api.chatbot import router as chatbot_router
+from app.api.alerts import router as alerts_router
 from app.api.websocket import router as ws_router, start_agent_background
 
 # ── Structured logging ────────────────────────────────────────────────────────
@@ -74,6 +80,12 @@ app.include_router(processes_router)
 app.include_router(reports_router)
 app.include_router(feedback_router)
 app.include_router(maintenance_router)
+app.include_router(healing_router)
+app.include_router(rl_router)
+app.include_router(applications_router)
+app.include_router(hibernator_router)
+app.include_router(chatbot_router)
+app.include_router(alerts_router)
 app.include_router(ws_router)
 
 
