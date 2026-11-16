@@ -28,22 +28,24 @@ def _generate_template_summary(incident_data: Dict[str, Any]) -> Dict[str, str]:
     action_str = "No automated action taken yet."
     if actions:
         action_names = [a.get("action_type", "action") if isinstance(a, dict) else getattr(a, "action_type", "action") for a in actions]
-        action_str = f"Executed mitigation action(s): {', '.join(action_names)}."
+        action_str = "Executed mitigation action(s): " + ", ".join(action_names) + "."
 
+    prediction_summary = ("Predictive Warning: " + prediction + ". ") if prediction else ""
     summary = (
-        f"[{severity}] Process '{proc_name}' (PID {pid}) was flagged by Nexus Guardian. "
-        f"Root Cause: {desc}. "
-        f"{f'Predictive Warning: {prediction}. ' if prediction else ''}"
-        f"{action_str}"
+        "[" + severity + "] Process '" + proc_name + "' (PID " + str(pid) + ") was flagged by Nexus Guardian. "
+        "Root Cause: " + desc + ". "
+        + prediction_summary
+        + action_str
     )
 
+    forecast_line = ("• *Forecast:* " + prediction + "\n") if prediction else ""
     slack_msg = (
-        f"🚨 *Nexus Guardian Incident Report* [{severity}]\n"
-        f"• *Process:* `{proc_name}` (PID: `{pid}`)\n"
-        f"• *Diagnosis:* {desc}\n"
-        f"{f'• *Forecast:* {prediction}\n' if prediction else ''}"
-        f"• *Status/Action:* {action_str}\n"
-        f"• *Timestamp:* `{incident_data.get('detected_at', 'Now')}`"
+        "🚨 *Nexus Guardian Incident Report* [" + severity + "]\n"
+        "• *Process:* `" + proc_name + "` (PID: `" + str(pid) + "`)\n"
+        "• *Diagnosis:* " + desc + "\n"
+        + forecast_line
+        + "• *Status/Action:* " + action_str + "\n"
+        "• *Timestamp:* `" + str(incident_data.get("detected_at", "Now")) + "`"
     )
 
     return {
