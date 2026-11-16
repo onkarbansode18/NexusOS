@@ -178,7 +178,51 @@ class AlertService:
             logger.warning("SMTP delivery failed: %s", e)
             return False, f"SMTP error ({user}): {e}"
 
-    # ── SendGrid HTTPS API Sender (works on Render free tier) ────────────────
+    # ── Resend HTTPS API Sender (best deliverability, pre-authenticated domain) ─
+
+    async def _send_email_resend(
+        self,
+        to_email: str,
+        subject: str,
+        body_text: str,
+        body_html: str,
+    ) -> tuple[bool, str]:
+        """Send via Resend API — uses pre-authenticated domain, lands in inbox."""
+        api_key = os.getenv("RESEND_API_KEY", "").strip()
+        if not api_key:
+            return False, "RESEND_API_KEY not configured"
+        # Use Resend's pre-authenticated domain as from; user's Gmail as reply-to
+        # This passes SPF/DKIM/DMARC — no spam folder
+        reply_email = (self._settings.smtp_user or os.getenv("SMTP_USER", "")).strip()
+        from_address = "NexusOS Guardian <onboarding@resend.dev>"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                payload: dict = {
+                    "from": from_address,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": body_text,
+                    "html": body_html,
+                }
+                if reply_email:
+                    payload["reply_to"] = reply_email
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+            if resp.status_code in (200, 201):
+                return True, f"Email delivered via Resend to {to_email}"
+            else:
+                return False, f"Resend error {resp.status_code}: {resp.text[:200]}"
+        except Exception as e:
+            return False, f"Resend exception: {e}"
+
+    # ── SendGrid HTTPS API Sender (fallback) ──────────────────────────────────
 
     async def _send_email_sendgrid(
         self,
@@ -187,7 +231,7 @@ class AlertService:
         body_text: str,
         body_html: str,
     ) -> tuple[bool, str]:
-        """Send via SendGrid HTTPS API — bypasses Render free-tier SMTP block."""
+        """Send via SendGrid HTTPS API — fallback if Resend not configured."""
         api_key = os.getenv("SENDGRID_API_KEY", "").strip()
         if not api_key:
             return False, "SENDGRID_API_KEY not configured"
@@ -212,18 +256,9 @@ class AlertService:
                             {"type": "text/plain", "value": body_text},
                             {"type": "text/html", "value": body_html},
                         ],
-                        "headers": {
-                            "X-Priority": "1",
-                            "X-Mailer": "NexusOS-Guardian/2.0",
-                            "List-Unsubscribe": f"<mailto:{from_email}?subject=unsubscribe>",
-                            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                        },
                         "tracking_settings": {
                             "click_tracking": {"enable": False},
                             "open_tracking": {"enable": False},
-                        },
-                        "mail_settings": {
-                            "bypass_spam_management": {"enable": True},
                         },
                     },
                 )
@@ -448,36 +483,48 @@ class AlertService:
             smtp_user = (self._settings.smtp_user or os.getenv("SMTP_USER", "")).strip()
             smtp_pass = (self._settings.smtp_password or os.getenv("SMTP_PASSWORD", "")).strip()
 
-            if smtp_user and smtp_pass:
-                sg_key = os.getenv("SENDGRID_API_KEY", "").strip()
-                if sg_key:
-                    # SendGrid HTTPS API — works on Render free tier (SMTP port 587 is blocked)
-                    ok, msg = await self._send_email_sendgrid(email, email_subject, body_text, body_html)
-                    details_list.append(msg)
-                    if ok:
+            resend_key = os.getenv("RESEND_API_KEY", "").strip()
+            sg_key = os.getenv("SENDGRID_API_KEY", "").strip()
+
+            if resend_key:
+                # 1st choice: Resend — pre-authenticated domain, best inbox delivery
+                ok, msg = await self._send_email_resend(email, email_subject, body_text, body_html)
+                details_list.append(msg)
+                if ok:
+                    email_delivered = True
+                    provider_str = "Resend (onboarding@resend.dev)"
+                elif sg_key:
+                    # 2nd choice: SendGrid fallback
+                    ok2, msg2 = await self._send_email_sendgrid(email, email_subject, body_text, body_html)
+                    details_list.append(msg2)
+                    if ok2:
                         email_delivered = True
                         provider_str = f"SendGrid ({smtp_user})"
                     else:
-                        # SendGrid failed — try SMTP as last resort
-                        ok2, msg2 = await self._send_email_smtp(email, email_subject, body_text, body_html)
-                        details_list.append(msg2)
-                        if ok2:
-                            email_delivered = True
-                            provider_str = f"Gmail SMTP ({smtp_user})"
-                        else:
-                            provider_str = f"Email failed: {msg} | {msg2}"
+                        provider_str = f"Email failed: {msg} | {msg2}"
                 else:
-                    # No SendGrid key — try SMTP directly (works locally, fails on Render free tier)
-                    ok, msg = await self._send_email_smtp(email, email_subject, body_text, body_html)
-                    details_list.append(msg)
-                    if ok:
-                        email_delivered = True
-                        provider_str = f"Gmail ({smtp_user})"
-                    else:
-                        provider_str = f"Email failed: {msg}"
+                    provider_str = f"Email failed: {msg}"
+            elif sg_key and smtp_user and smtp_pass:
+                # 2nd choice: SendGrid
+                ok, msg = await self._send_email_sendgrid(email, email_subject, body_text, body_html)
+                details_list.append(msg)
+                if ok:
+                    email_delivered = True
+                    provider_str = f"SendGrid ({smtp_user})"
+                else:
+                    provider_str = f"Email failed: {msg}"
+            elif smtp_user and smtp_pass:
+                # Last resort: direct SMTP (works locally, blocked on Render free tier)
+                ok, msg = await self._send_email_smtp(email, email_subject, body_text, body_html)
+                details_list.append(msg)
+                if ok:
+                    email_delivered = True
+                    provider_str = f"Gmail SMTP ({smtp_user})"
+                else:
+                    provider_str = f"Email failed: {msg}"
             else:
-                details_list.append("Gmail credentials not configured in Settings")
-                provider_str = "Gmail credentials not configured"
+                details_list.append("No email credentials configured (set RESEND_API_KEY in Render)")
+                provider_str = "No email credentials configured"
 
         overall_status = "delivered" if email_delivered else "not_configured"
 
