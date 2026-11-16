@@ -84,6 +84,34 @@ class SystemMetrics:
     processes: List[ProcessSnapshot] = field(default_factory=list)
 
 
+# ── Container-aware memory helper ─────────────────────────────────────────────
+
+def _get_container_memory_limit_bytes() -> int | None:
+    """
+    Return the container cgroup memory limit in bytes, or None if unavailable.
+    psutil.virtual_memory().total reports the HOST machine's RAM inside Linux
+    containers (Docker / Render / etc.); this gives the actual container ceiling.
+    """
+    # cgroup v2  — modern kernels, Render uses this
+    try:
+        with open("/sys/fs/cgroup/memory.max", "r") as f:
+            val = f.read().strip()
+            if val != "max":
+                return int(val)
+    except Exception:
+        pass
+    # cgroup v1  — older kernels / Docker legacy
+    try:
+        with open("/sys/fs/cgroup/memory/memory.limit_in_bytes", "r") as f:
+            val = int(f.read().strip())
+            # Sentinel meaning "unlimited" ≈ 2^63 − 4096
+            if val < 9 * 10 ** 18:
+                return val
+    except Exception:
+        pass
+    return None
+
+
 # ── Collector ─────────────────────────────────────────────────────────────────
 
 class MetricsCollector:
@@ -158,11 +186,24 @@ class MetricsCollector:
         try:
             vm = psutil.virtual_memory()
             to_mb = 1 / (1024 ** 2)
+            total_bytes = vm.total
+
+            # In Linux containers (Render, Docker) psutil reads HOST RAM, not the
+            # container's cgroup limit — fix by using the smaller of host/cgroup.
+            cgroup_limit = _get_container_memory_limit_bytes()
+            if cgroup_limit and cgroup_limit < total_bytes:
+                total_bytes = cgroup_limit
+
+            total_mb    = round(total_bytes * to_mb, 1)
+            used_mb     = round(min(vm.used * to_mb, total_mb), 1)
+            available_mb = round(max(total_mb - used_mb, 0), 1)
+            percent     = round((used_mb / total_mb * 100) if total_mb > 0 else 0, 1)
+
             return {
-                "total":     round(vm.total     * to_mb, 1),
-                "used":      round(vm.used      * to_mb, 1),
-                "available": round(vm.available * to_mb, 1),
-                "percent":   vm.percent,
+                "total":     total_mb,
+                "used":      used_mb,
+                "available": available_mb,
+                "percent":   percent,
             }
         except Exception:
             return {"total": 1024.0, "used": 512.0, "available": 512.0, "percent": 50.0}
