@@ -17,6 +17,7 @@ psutil==6.0.0
 scikit-learn==1.5.2
 numpy>=2.0
 statsmodels==0.14.4
+torch>=2.0.0
 
 # Auth
 python-jose[cryptography]==3.3.0
