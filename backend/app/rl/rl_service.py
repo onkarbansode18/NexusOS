@@ -58,34 +58,56 @@ class RLService:
         self.reward_calculator = RewardCalculator()
         self.model_manager = ModelManager(checkpoints_dir=self.checkpoints_dir)
 
-        # Core Agent
-        self.agent = DoubleDQNAgent(state_dim=STATE_DIM, action_dim=ACTION_DIM)
-
-        # Trainer & Evaluator
-        self.env = NexusRLEnvironment()
-        self.trainer = RLTrainer(agent=self.agent, env=self.env)
-        self.evaluator = Evaluator(env=self.env)
+        # Core Agent, Trainer, Evaluator (lazily loaded to ensure instant server boot and low memory footprint)
+        self._agent: Optional[DoubleDQNAgent] = None
+        self._env: Optional[NexusRLEnvironment] = None
+        self._trainer: Optional[RLTrainer] = None
+        self._evaluator: Optional[Evaluator] = None
 
         # Operational state
         self.autonomous_mode: bool = False  # False = Observe/Shadow mode; True = Active Autonomous Healing
         self.decision_count: int = 0
         self.recent_decisions: List[Dict[str, Any]] = []
-
-        # Load active model from registry
-        self._load_initial_model()
         self._initialized = True
+
+    @property
+    def agent(self) -> DoubleDQNAgent:
+        if self._agent is None:
+            self._agent = DoubleDQNAgent(state_dim=STATE_DIM, action_dim=ACTION_DIM)
+            self._load_initial_model()
+        return self._agent
+
+    @property
+    def env(self) -> NexusRLEnvironment:
+        if self._env is None:
+            self._env = NexusRLEnvironment()
+        return self._env
+
+    @property
+    def trainer(self) -> RLTrainer:
+        if self._trainer is None:
+            self._trainer = RLTrainer(agent=self.agent, env=self.env)
+        return self._trainer
+
+    @property
+    def evaluator(self) -> Evaluator:
+        if self._evaluator is None:
+            self._evaluator = Evaluator(env=self.env)
+        return self._evaluator
 
     def _load_initial_model(self) -> None:
         """Attempt to load active model from registry or default checkpoint."""
+        if self._agent is None:
+            return
         try:
             active_meta = self.model_manager.get_active_model()
             if active_meta and os.path.exists(active_meta.get("filepath", "")):
-                self.agent.load_checkpoint(active_meta["filepath"])
+                self._agent.load_checkpoint(active_meta["filepath"])
                 logger.info("RLService loaded active model: %s", active_meta.get("name"))
             else:
                 default_ckpt = os.path.join(self.checkpoints_dir, "nexus_ddqn_default.pt")
                 if os.path.exists(default_ckpt):
-                    self.agent.load_checkpoint(default_ckpt)
+                    self._agent.load_checkpoint(default_ckpt)
                     logger.info("RLService loaded default checkpoint: %s", default_ckpt)
         except Exception as e:
             logger.warning("Could not load initial RL checkpoint (starting fresh): %s", e)
@@ -93,13 +115,16 @@ class RLService:
     def get_status(self) -> Dict[str, Any]:
         """Return operational status and agent telemetry."""
         active_model = self.model_manager.get_active_model()
+        device_str = str(self._agent.device) if self._agent else "cpu"
+        eps = round(float(self._agent.epsilon), 4) if self._agent else 1.0
+        is_tr = self._trainer.is_training if self._trainer else False
         return {
             "status": "online",
             "autonomous_mode": self.autonomous_mode,
             "mode_label": "Autonomous Self-Healing" if self.autonomous_mode else "Observe & Advise (Shadow Mode)",
-            "device": str(self.agent.device),
-            "epsilon": round(float(self.agent.epsilon), 4),
-            "is_training": self.trainer.is_training,
+            "device": device_str,
+            "epsilon": eps,
+            "is_training": is_tr,
             "decision_count": self.decision_count,
             "active_model": active_model,
             "models_available": len(self.model_manager.list_models()),

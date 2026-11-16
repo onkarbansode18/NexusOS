@@ -18,21 +18,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-try:
-    import torch
-    import torch.nn as nn
-    import torch.optim as optim
-except ImportError:
-    import sys
-    for p in [
-        r"C:\Users\DELL\AppData\Local\Programs\Python\Python313\Lib\site-packages",
-        r"D:\Nexus_Back\Nexus_Bakcup\Nexus_OS\backend\venv\Lib\site-packages",
-    ]:
-        if p not in sys.path:
-            sys.path.append(p)
-    import torch
-    import torch.nn as nn
-    import torch.optim as optim
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 from app.rl.environment import ACTION_DIM, ACTION_NAMES
 from app.rl.state_encoder import STATE_DIM, FEATURE_NAMES

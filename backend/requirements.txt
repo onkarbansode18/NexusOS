@@ -17,11 +17,13 @@ psutil==6.0.0
 scikit-learn==1.5.2
 numpy>=2.0
 statsmodels==0.14.4
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.0.0
 
 # Auth
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-multipart==0.0.12
 
 # Logging / Utilities
